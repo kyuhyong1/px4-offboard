@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-import sys
 
-import geometry_msgs.msg
+__author__ = "Kyuhyong You"
+__contact__ = "kyuhyong.you@nearthlab.com"
+
+import sys
 import rclpy
-import std_msgs.msg
+from rclpy.node import Node
+from rclpy.clock import Clock
+
+from std_msgs.msg import String as StringMsg
+from geometry_msgs.msg import Twist
 
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 
@@ -13,167 +19,176 @@ else:
     import termios
     import tty
 
+class VelocityCommand():
+    v_x = 0.0
+    v_y = 0.0
+    v_z = 0.0
+    rot_z = 0.0
 
-msg = """
-This node takes keypresses from the keyboard and publishes them
-as Twist messages. 
-Using the arrow keys and WASD you have Mode 2 RC controls.
-W: Up
-S: Down
-A: Yaw Left
-D: Yaw Right
-Up Arrow: Pitch Forward
-Down Arrow: Pitch Backward
-Left Arrow: Roll Left
-Right Arrow: Roll Right
+    def reset(self):
+        self.v_x = 0.0
+        self.v_y = 0.0
+        self.v_z = 0.0
+        self.rot_z = 0.0
 
-Press SPACE to arm/disarm the drone
-"""
+class KeyboardControl(Node):
 
-moveBindings = {
-    'w': (0, 0, 1, 0), #Z+
-    's': (0, 0, -1, 0),#Z-
-    'a': (0, 0, 0, -1), #Yaw+
-    'd': (0, 0, 0, 1),#Yaw-
-    '\x1b[A' : (0, 1, 0, 0),  #Up Arrow
-    '\x1b[B' : (0, -1, 0, 0), #Down Arrow
-    '\x1b[C' : (-1, 0, 0, 0), #Right Arrow
-    '\x1b[D' : (1, 0, 0, 0),  #Left Arrow
-}
+    def printDescription(self):
+        msg = """
+        This node takes keypresses from the keyboard and publishes them
+        as Twist messages. 
+        Using the arrow keys and 'WAXD' you have Mode 2 RC controls.
+        W: Up
+        X: Down
+        A: Yaw Left
+        D: Yaw Right
+        S: Reset command
+        Up Arrow: Pitch Forward
+        Down Arrow: Pitch Backward
+        Left Arrow: Roll Left
+        Right Arrow: Roll Right
 
-
-speedBindings = {
-    # 'q': (1.1, 1.1),
-    # 'z': (.9, .9),
-    # 'w': (1.1, 1),
-    # 'x': (.9, 1),
-    # 'e': (1, 1.1),
-    # 'c': (1, .9),
-}
-
-
-def getKey(settings):
-    if sys.platform == 'win32':
-        # getwch() returns a string on Windows
-        key = msvcrt.getwch()
-    else:
-        tty.setraw(sys.stdin.fileno())
-        # sys.stdin.read() returns a string on Linux
-        key = sys.stdin.read(1)
-        if key == '\x1b':  # if the first character is \x1b, we might be dealing with an arrow key
-            additional_chars = sys.stdin.read(2)  # read the next two characters
-            key += additional_chars  # append these characters to the key
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
-    return key
-
-
-
-def saveTerminalSettings():
-    if sys.platform == 'win32':
-        return None
-    return termios.tcgetattr(sys.stdin)
-
-
-def restoreTerminalSettings(old_settings):
-    if sys.platform == 'win32':
-        return
-    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-
-
-def vels(speed, turn):
-    return 'currently:\tspeed %s\tturn %s ' % (speed, turn)
-
-
-def main():
-    settings = saveTerminalSettings()
-
-    rclpy.init()
-
-    node = rclpy.create_node('teleop_twist_keyboard')
-
-    qos_profile = QoSProfile(
-        reliability=QoSReliabilityPolicy.BEST_EFFORT,
-        durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
-        history=QoSHistoryPolicy.KEEP_LAST,
-        depth=10
-    )
-
-
-    pub = node.create_publisher(geometry_msgs.msg.Twist, '/offboard_velocity_cmd', qos_profile)
-
-    arm_toggle = False
-    arm_pub = node.create_publisher(std_msgs.msg.Bool, '/arm_message', qos_profile)
-
-
-    speed = 0.5
-    turn = .2
-    x = 0.0
-    y = 0.0
-    z = 0.0
-    th = 0.0
-    status = 0.0
-    x_val = 0.0
-    y_val = 0.0
-    z_val = 0.0
-    yaw_val = 0.0
-
-    try:
+        Press   'O'   to set to offboard mode
+        Press   'T'   to take off the drone
+        Press 'SPACE' to arm the drone
+        Press 'BACKSPACE' to disarm the drone
+        """
         print(msg)
-        # print(vels(speed, turn))
-        while True:
-            key = getKey(settings)
-            if key in moveBindings.keys():
-                x = moveBindings[key][0]
-                y = moveBindings[key][1]
-                z = moveBindings[key][2]
-                th = moveBindings[key][3]
-            
-            else:
-                x = 0.0
-                y = 0.0
-                z = 0.0
-                th = 0.0
-                if (key == '\x03'):
-                    break
 
-            if key == ' ':  # ASCII value for space
-                arm_toggle = not arm_toggle  # Flip the value of arm_toggle
-                arm_msg = std_msgs.msg.Bool()
-                arm_msg.data = arm_toggle
-                arm_pub.publish(arm_msg)
-                print(f"Arm toggle is now: {arm_toggle}")
+    moveBindings = {
+        'w': (0, 0, 1, 0), #Z+
+        'x': (0, 0, -1, 0),#Z-
+        'a': (0, 0, 0, -1), #Yaw+
+        'd': (0, 0, 0, 1),#Yaw-
+        '\x1b[A' : (0, 1, 0, 0),  #Up Arrow
+        '\x1b[B' : (0, -1, 0, 0), #Down Arrow
+        '\x1b[C' : (-1, 0, 0, 0), #Right Arrow
+        '\x1b[D' : (1, 0, 0, 0),  #Left Arrow
+    }
+    speedBindings = {
+        # 'q': (1.1, 1.1),
+        # 'z': (.9, .9),
+        # 'w': (1.1, 1),
+        # 'x': (.9, 1),
+        # 'e': (1, 1.1),
+        # 'c': (1, .9),
+    }
 
-            twist = geometry_msgs.msg.Twist()
-            
-            x_val = (x * speed) + x_val
-            y_val = (y * speed) + y_val
-            z_val = (z * speed) + z_val
-            yaw_val = (th * turn) + yaw_val
-            twist.linear.x = x_val
-            twist.linear.y = y_val
-            twist.linear.z = z_val
-            twist.angular.x = 0.0
-            twist.angular.y = 0.0
-            twist.angular.z = yaw_val
-            pub.publish(twist)
-            print("X:",twist.linear.x, "   Y:",twist.linear.y, "   Z:",twist.linear.z, "   Yaw:",twist.angular.z)
-            
+    def getKey(self, settings):
+        if sys.platform == 'win32':
+            # getwch() returns a string on Windows
+            key = msvcrt.getwch()
+        else:
+            tty.setraw(sys.stdin.fileno())
+            # sys.stdin.read() returns a string on Linux
+            key = sys.stdin.read(1)
+            #print(key+" ")
+            if key == '\x1b':  # if the first character is \x1b, we might be dealing with an arrow key
+                additional_chars = sys.stdin.read(2)  # read the next two characters
+                key += additional_chars  # append these characters to the key
+                #print(additional_chars)
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+        return key
 
-    except Exception as e:
-        print(e)
+    def saveTerminalSettings(self):
+        if sys.platform == 'win32':
+            return None
+        return termios.tcgetattr(sys.stdin)
 
-    finally:
-        twist = geometry_msgs.msg.Twist()
-        twist.linear.x = 0.0
-        twist.linear.y = 0.0
-        twist.linear.z = 0.0
+
+    def restoreTerminalSettings(self, old_settings):
+        if sys.platform == 'win32':
+            return
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+
+    def vels(self, speed, turn):
+        return 'currently:\tspeed %s\tturn %s ' % (speed, turn)
+
+    def send_command_msg(self, msg):
+        str_msg = StringMsg()
+        str_msg.data = msg
+        self.pub_command.publish(str_msg)
+        print(f"Command sent: {msg}")
+
+    def send_twist_msg(self, vel_com):
+        twist = Twist()
+        twist.linear.x = vel_com.v_x
+        twist.linear.y = vel_com.v_y
+        twist.linear.z = vel_com.v_z
         twist.angular.x = 0.0
         twist.angular.y = 0.0
-        twist.angular.z = 0.0
-        pub.publish(twist)
+        twist.angular.z = vel_com.rot_z
+        self.pub_twist.publish(twist)
+        print("X:",twist.linear.x, "   Y:",twist.linear.y, "   Z:",twist.linear.z, "   Yaw:",twist.angular.z)
 
-        restoreTerminalSettings(settings)
+    def __init__(self):
+        super().__init__('minimal_publisher')
+        self.settings = self.saveTerminalSettings()
 
+        qos_profile = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10
+        )
+
+        #Create publishers
+        self.pub_twist = self.create_publisher(Twist, '/offboard_velocity_cmd', qos_profile)
+
+        self.pub_command = self.create_publisher(StringMsg, '/command_message', qos_profile)
+
+        self.v_step = 0.5
+        self.rot_step = .2
+        self.vel_com = VelocityCommand ()
+
+        self.status = 0.0
+        self.timer = self.create_timer(0.1, self.timer_callback)
+        self.printDescription()
+
+    def timer_callback(self):
+        
+        # print(vels(speed, turn))
+        key = self.getKey(self.settings)
+        vx = 0.0
+        vy = 0.0
+        vz = 0.0
+        rz = 0.0
+        if key in self.moveBindings.keys():
+            vx = self.moveBindings[key][0]
+            vy = self.moveBindings[key][1]
+            vz = self.moveBindings[key][2]
+            rz = self.moveBindings[key][3]
+
+        self.vel_com.v_x = (vx * self.v_step) + self.vel_com.v_x
+        self.vel_com.v_y = (vy * self.v_step) + self.vel_com.v_y
+        self.vel_com.v_z = (vz * self.v_step) + self.vel_com.v_z
+        self.vel_com.rot_z = (rz * self.rot_step) + self.vel_com.rot_z
+        
+        if key == 'o': 
+            self.send_command_msg("SET_OFFBOARD")
+        elif key == 's':
+            self.vel_com.reset()
+        elif key == 't':
+            self.send_command_msg("SET_TAKEOFF")
+        elif key == ' ':  # ASCII value for space
+            self.send_command_msg("SET_ARM")
+        elif key == 'l':
+            self.send_command_msg("SET_LAND")
+        elif key == '\x7f':
+            self.send_command_msg("SET_DISARM")
+        
+        self.send_twist_msg(self.vel_com)    
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    keyboard_control = KeyboardControl()
+
+    rclpy.spin(keyboard_control)
+
+    keyboard_control.destroy_node()
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
