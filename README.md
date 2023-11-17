@@ -44,14 +44,14 @@ If CC is connected to PX4 via serial port(/dev/ttyHS1) with baud rate of 2000000
 $ ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyHS1 -b 2000000
 ```
 
-### Launch velocity control
+### Launch Teleop Control
 
-To run the offboard velocity control example, open a terminal and run the the node.
+To run the offboard teleop control example, open a terminal and run the the node.
 ```
-ros2 launch px4_offboard offboard_velocity_control.launch.py
+ros2 launch px4_offboard offboard_teleop_control.launch.py
 ```
 
-This will launch control.py which takes keyboard input from user to send Twist command to velocity_control node.  
+This will launch teleop_keyboard.py which takes keyboard input from user to send Twist command to offboard_commander node.  
 
 Available commands as below
 

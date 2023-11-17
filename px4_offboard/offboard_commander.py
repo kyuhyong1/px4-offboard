@@ -33,7 +33,8 @@
 ############################################################################
 
 __author__ = "Braden Wagstaff"
-__contact__ = "braden@arkelectron.com"
+__maintainer__ = "Kyuhyong You"
+__contact__ = "kyuhyong.you@nearthlab.com"
 
 import rclpy
 from rclpy.node import Node
@@ -50,7 +51,7 @@ from math import pi
 from std_msgs.msg import String as StringMsg
 
 
-class OffboardControl(Node):
+class OffboardCommander(Node):
 
     def __init__(self):
         super().__init__('minimal_publisher')
@@ -63,8 +64,8 @@ class OffboardControl(Node):
         #Create subscriptions
         self.sub_status = self.create_subscription(
             VehicleStatus,'/fmu/out/vehicle_status', self.cb_vehicle_status, qos_profile)
-        self.sub_offboard_velocity = self.create_subscription(
-            Twist, '/offboard_velocity_cmd', self.cb_offboard_velocity, qos_profile)
+        self.sub_twist_velocity = self.create_subscription(
+            Twist, '/offboard_velocity_cmd', self.cb_twist_velocity, qos_profile)
         self.sub_attitude = self.create_subscription(
             VehicleAttitude, '/fmu/out/vehicle_attitude', self.cb_attitude, qos_profile)
         self.my_bool_sub = self.create_subscription(
@@ -105,7 +106,14 @@ class OffboardControl(Node):
         self.offboard_setpoint_counter = 0
         self.vehicle_local_position = VehicleLocalPosition()
         self.vehicle_status = VehicleStatus()
+        self.offboard_control_mode = OffboardControlMode()
+        self.offboard_control_mode.position = True
+        self.offboard_control_mode.velocity = False
+        self.offboard_control_mode.acceleration = False
+        self.offboard_control_mode.attitude = False
+        self.offboard_control_mode.body_rate = False
         self.takeoff_height = -5.0
+        self.is_in_velocity_control = False
 
         #states with corresponding callback functions that run once when state switches
         # self.states = {
@@ -159,14 +167,8 @@ class OffboardControl(Node):
 
     def send_heartbeat_signal(self):
         """Publish the offboard control mode."""
-        msg = OffboardControlMode()
-        msg.position = True
-        msg.velocity = True
-        msg.acceleration = False
-        msg.attitude = False
-        msg.body_rate = False
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.pub_offboard_mode.publish(msg)
+        self.offboard_control_mode.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.pub_offboard_mode.publish(self.offboard_control_mode)
 
     def land(self):
         """Switch to land mode."""
@@ -175,8 +177,15 @@ class OffboardControl(Node):
 
     # Takes off the vehicle to a user specified altitude (meters)
     def take_off(self):
-        self.send_vehicle_command(VehicleCommand.VEHICLE_CMD_NAV_TAKEOFF, param1 = 1.0, param7=5.0) # param7 is altitude in meters
-        self.get_logger().info("Takeoff command send")
+        if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
+            #self.send_vehicle_command(VehicleCommand.VEHICLE_CMD_NAV_TAKEOFF, param1 = 1.0, param7=5.0) # param7 is altitude in meters
+            pose = Vector3()
+            pose.x = 0.0
+            pose.y = 0.0
+            pose.z = self.takeoff_height
+            yaw = 1.57
+            self.send_position_setpoint(pose, yaw)
+            self.get_logger().info("Takeoff command send")
 
     #publishes command to /fmu/in/vehicle_command
     def send_vehicle_command(self, command, **params) -> None:
@@ -197,38 +206,58 @@ class OffboardControl(Node):
         msg.from_external = True
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000) # time in microseconds
         self.pub_vehicle_command.publish(msg)
+    
+    def send_position_setpoint(self, pose: Vector3(), yaw: float):
+        """Publish the trajectory setpoint."""
+        self.offboard_control_mode.position = True
+        self.offboard_control_mode.velocity = False
+        msg = TrajectorySetpoint()
+        msg.position = [pose.x, pose.y, pose.z]
+        msg.yaw = yaw #1.57079  # (90 degree)
+        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.get_logger().info(f"Publishing position setpoints {[pose.x, pose.y, pose.z]}")
+        self.pub_trajectory.publish(msg)
+
+    def send_velocity_setpoint(self, vel: Vector3(), yaw: float):
+        """Publish the trajectory setpoint."""
+        self.offboard_control_mode.position = False
+        self.offboard_control_mode.velocity = True
+        msg = VehicleRatesSetpoint()
+        msg.roll = 0.0
+        msg.pitch = 0.0
+        msg.yaw = yaw
+        msg.thrust_body[0] = vel.x
+        msg.thrust_body[1] = vel.y
+        msg.thrust_body[2] = vel.z
+        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.get_logger().info(f"Publishing position setpoints {[vel.x, vel.y, vel.z]}")
+        self.pub_velocity.publish(msg)
 
     #receives and sets vehicle status values 
-    def cb_vehicle_status(self, msg):
+    def cb_vehicle_status(self, vehicle_status):
         #self.get_logger().info(f"NAV_STATUS: {msg.nav_state}")
         #self.get_logger().info(f"ARM STATUS: {msg.arming_state}")
         #self.get_logger().info(f"FlightCheck: {msg.pre_flight_checks_pass}")
-        self.nav_state = msg.nav_state
-        self.arm_state = msg.arming_state
-        self.failsafe = msg.failsafe
-        self.flightCheck = msg.pre_flight_checks_pass
-        if msg.pre_flight_checks_pass == True:
-            self.get_logger().info(f"FlightCheck: {msg.pre_flight_checks_pass}")
+        self.vehicle_status = vehicle_status
+        self.nav_state = vehicle_status.nav_state
+        self.arm_state = vehicle_status.arming_state
+        self.failsafe = vehicle_status.failsafe
+        self.flightCheck = vehicle_status.pre_flight_checks_pass
+        #if msg.pre_flight_checks_pass == True:
+        #    self.get_logger().info(f"FlightCheck: {msg.pre_flight_checks_pass}")
 
     #receives Twist commands from Teleop and converts NED -> FLU
-    def cb_offboard_velocity(self, msg):
+    def cb_twist_velocity(self, twist):
         #implements NED -> FLU Transformation
-        self.velocity.x = -msg.linear.y
-        self.velocity.y = msg.linear.x
-        self.velocity.z = -msg.linear.z
-        self.yaw = msg.angular.z
-
-        # X (FLU) is -Y (NED)
-        self.velocity.x = -msg.linear.y
-
-        # Y (FLU) is X (NED)
-        self.velocity.y = msg.linear.x
-
-        # Z (FLU) is -Z (NED)
-        self.velocity.z = -msg.linear.z
-
+        self.is_in_velocity_control = True
+        self.velocity.x = twist.linear.y
+        self.velocity.y = -twist.linear.x
+        self.velocity.z = self.takeoff_height - twist.linear.z
         # A conversion for angular z is done in the attitude_callback function(it's the '-' in front of self.trueYaw)
-        self.yaw = msg.angular.z
+        self.yaw = twist.angular.z
+        #self.send_velocity_setpoint(self.velocity, self.yaw)
+        self.send_position_setpoint(self.velocity, self.yaw)
+        self.get_logger().info(f"Velocity={self.velocity.x, self.velocity.y}")
 
     #receives current trajectory values from drone and grabs the yaw value of the orientation
     def cb_attitude(self, msg):
@@ -238,44 +267,19 @@ class OffboardControl(Node):
         self.trueYaw = -(np.arctan2(2.0*(orientation_q[3]*orientation_q[0] + orientation_q[1]*orientation_q[2]), 
                                   1.0 - 2.0*(orientation_q[0]*orientation_q[0] + orientation_q[1]*orientation_q[1])))
         
-    #publishes offboard control modes and velocity as trajectory setpoints
+    #Command loop called every 0.1sec
     def cmdloop_callback(self):
-        if(self.offboardMode == True):
-            # Publish offboard control modes
-            self.send_heartbeat_signal()        
-
-            # Compute velocity in the world frame
-            # cos_yaw = np.cos(self.trueYaw)
-            # sin_yaw = np.sin(self.trueYaw)
-            # velocity_world_x = (self.velocity.x * cos_yaw - self.velocity.y * sin_yaw)
-            # velocity_world_y = (self.velocity.x * sin_yaw + self.velocity.y * cos_yaw)
-
-            # # Create and publish TrajectorySetpoint message with NaN values for position and acceleration
-            # trajectory_msg = TrajectorySetpoint()
-            # trajectory_msg.timestamp = int(Clock().now().nanoseconds / 1000)
-            # trajectory_msg.velocity[0] = velocity_world_x
-            # trajectory_msg.velocity[1] = velocity_world_y
-            # trajectory_msg.velocity[2] = self.velocity.z
-            # trajectory_msg.position[0] = float('nan')
-            # trajectory_msg.position[1] = float('nan')
-            # trajectory_msg.position[2] = float('nan')
-            # trajectory_msg.acceleration[0] = float('nan')
-            # trajectory_msg.acceleration[1] = float('nan')
-            # trajectory_msg.acceleration[2] = float('nan')
-            # trajectory_msg.yaw = float('nan')
-            # trajectory_msg.yawspeed = self.yaw
-
-            # self.pub_trajectory.publish(trajectory_msg)
+        self.send_heartbeat_signal()
 
 
 def main(args=None):
     rclpy.init(args=args)
 
-    offboard_control = OffboardControl()
+    offboard_commander = OffboardCommander()
 
-    rclpy.spin(offboard_control)
+    rclpy.spin(offboard_commander)
 
-    offboard_control.destroy_node()
+    offboard_commander.destroy_node()
     rclpy.shutdown()
 
 

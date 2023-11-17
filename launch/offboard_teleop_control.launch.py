@@ -56,15 +56,15 @@ def generate_launch_description():
         Node(
             package='px4_offboard',
             namespace='px4_offboard',
-            executable='control',
-            name='control',
+            executable='teleop_keyboard',
+            name='teleop_keyboard',
             prefix='gnome-terminal --',
         ),
         Node(
             package='px4_offboard',
             namespace='px4_offboard',
-            executable='velocity_control',
-            name='velocity'
+            executable='offboard_commander',
+            name='offboard_commander'
         ),
         Node(
             package='rviz2',

@@ -19,8 +19,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='jaeyoung',
-    maintainer_email='jalim@ethz.ch',
+    maintainer='kyuhyong',
+    maintainer_email='kyuhyong.you@nearthlab.com',
     description='TODO: Package description',
     license='TODO: License declaration',
     tests_require=['pytest'],
@@ -28,8 +28,8 @@ setup(
         'console_scripts': [
                 'offboard_control = px4_offboard.offboard_control:main',
                 'visualizer = px4_offboard.visualizer:main',
-                'velocity_control = px4_offboard.velocity_control:main',
-                'control = px4_offboard.control:main'
+                'offboard_commander = px4_offboard.offboard_commander:main',
+                'teleop_keyboard = px4_offboard.teleop_keyboard:main'
         ],
     },
 )

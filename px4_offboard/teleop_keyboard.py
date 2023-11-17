@@ -159,16 +159,17 @@ class KeyboardControl(Node):
             vy = self.moveBindings[key][1]
             vz = self.moveBindings[key][2]
             rz = self.moveBindings[key][3]
-
-        self.vel_com.v_x = (vx * self.v_step) + self.vel_com.v_x
-        self.vel_com.v_y = (vy * self.v_step) + self.vel_com.v_y
-        self.vel_com.v_z = (vz * self.v_step) + self.vel_com.v_z
-        self.vel_com.rot_z = (rz * self.rot_step) + self.vel_com.rot_z
+            self.vel_com.v_x = (vx * self.v_step) + self.vel_com.v_x
+            self.vel_com.v_y = (vy * self.v_step) + self.vel_com.v_y
+            self.vel_com.v_z = (vz * self.v_step) + self.vel_com.v_z
+            self.vel_com.rot_z = (rz * self.rot_step) + self.vel_com.rot_z
+            self.send_twist_msg(self.vel_com)    
         
         if key == 'o': 
             self.send_command_msg("SET_OFFBOARD")
         elif key == 's':
             self.vel_com.reset()
+            self.send_twist_msg(self.vel_com)    
         elif key == 't':
             self.send_command_msg("SET_TAKEOFF")
         elif key == ' ':  # ASCII value for space
@@ -178,7 +179,7 @@ class KeyboardControl(Node):
         elif key == '\x7f':
             self.send_command_msg("SET_DISARM")
         
-        self.send_twist_msg(self.vel_com)    
+        
 
 
 def main(args=None):
