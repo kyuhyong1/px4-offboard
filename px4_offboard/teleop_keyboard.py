@@ -134,7 +134,7 @@ class KeyboardControl(Node):
         )
 
         #Create publishers
-        self.pub_twist = self.create_publisher(Twist, '/offboard_velocity_cmd', qos_profile)
+        self.pub_twist = self.create_publisher(Twist, '/offboard_position_cmd', qos_profile)
 
         self.pub_command = self.create_publisher(StringMsg, '/command_message', qos_profile)
 

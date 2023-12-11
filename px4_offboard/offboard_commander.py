@@ -42,7 +42,7 @@ import numpy as np
 from rclpy.clock import Clock
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
-from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleRatesSetpoint
+from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleRatesSetpoint, VehicleAttitudeSetpoint
 from px4_msgs.msg import VehicleStatus
 from px4_msgs.msg import VehicleAttitude, VehicleLocalPosition
 from px4_msgs.msg import VehicleCommand
@@ -64,8 +64,13 @@ class OffboardCommander(Node):
         #Create subscriptions
         self.sub_status = self.create_subscription(
             VehicleStatus,'/fmu/out/vehicle_status', self.cb_vehicle_status, qos_profile)
+        
+        self.sub_twist_position = self.create_subscription(
+            Twist, '/offboard_position_cmd', self.cb_twist_position, qos_profile)
+        
         self.sub_twist_velocity = self.create_subscription(
             Twist, '/offboard_velocity_cmd', self.cb_twist_velocity, qos_profile)
+        
         self.sub_attitude = self.create_subscription(
             VehicleAttitude, '/fmu/out/vehicle_attitude', self.cb_attitude, qos_profile)
         self.my_bool_sub = self.create_subscription(
@@ -76,6 +81,7 @@ class OffboardCommander(Node):
         #Create publishers
         # Some message names changed???
         self.pub_offboard_mode = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
+        #self.pub_velocity = self.create_publisher(VehicleAttitudeSetpoint, '/fmu/in/vehicle_attitude_setpoint', qos_profile)
         self.pub_velocity = self.create_publisher(VehicleRatesSetpoint, '/fmu/in/vehicle_rates_setpoint', qos_profile)
         self.pub_trajectory = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
         self.pub_vehicle_command = self.create_publisher(VehicleCommand, "/fmu/in/vehicle_command", qos_profile)
@@ -94,8 +100,13 @@ class OffboardCommander(Node):
 
         self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
         self.arm_state = VehicleStatus.ARMING_STATE_MAX
+        
+        # Command value
         self.velocity = Vector3()
-        self.yaw = 0.0  #yaw value we send as command
+        self.position = Vector3()
+        self.heading = 0.0  #yaw value we send as command
+        self.yaw_rad_s = 0.0    # Rot_z speed
+
         self.trueYaw = 0.0  #current yaw value of drone
         self.offboardMode = False
         self.flightCheck = True
@@ -112,6 +123,7 @@ class OffboardCommander(Node):
         self.offboard_control_mode.acceleration = False
         self.offboard_control_mode.attitude = False
         self.offboard_control_mode.body_rate = False
+        #self.offboard_control_mode.thrust_body = False
         self.takeoff_height = -5.0
         self.is_in_velocity_control = False
 
@@ -211,6 +223,7 @@ class OffboardCommander(Node):
         """Publish the trajectory setpoint."""
         self.offboard_control_mode.position = True
         self.offboard_control_mode.velocity = False
+        #self.offboard_control_mode.thrust_body = False
         msg = TrajectorySetpoint()
         msg.position = [pose.x, pose.y, pose.z]
         msg.yaw = yaw #1.57079  # (90 degree)
@@ -221,16 +234,21 @@ class OffboardCommander(Node):
     def send_velocity_setpoint(self, vel: Vector3(), yaw: float):
         """Publish the trajectory setpoint."""
         self.offboard_control_mode.position = False
-        self.offboard_control_mode.velocity = True
+        self.offboard_control_mode.attitude = False
+        self.offboard_control_mode.body_rate = True
+        #msg = VehicleAttitudeSetpoint()
         msg = VehicleRatesSetpoint()
+        #msg.roll_body = 0.0
         msg.roll = 0.0
+        #msg.pitch_body = 0.0
         msg.pitch = 0.0
+        #msg.yaw_sp_move_rate = yaw
         msg.yaw = yaw
         msg.thrust_body[0] = vel.x
         msg.thrust_body[1] = vel.y
         msg.thrust_body[2] = vel.z
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.get_logger().info(f"Publishing position setpoints {[vel.x, vel.y, vel.z]}")
+        self.get_logger().info(f"Publishing atitiude setpoints {[vel.x, vel.y, vel.z]}")
         self.pub_velocity.publish(msg)
 
     #receives and sets vehicle status values 
@@ -247,16 +265,28 @@ class OffboardCommander(Node):
         #    self.get_logger().info(f"FlightCheck: {msg.pre_flight_checks_pass}")
 
     #receives Twist commands from Teleop and converts NED -> FLU
+    def cb_twist_position(self, twist):
+        #implements NED -> FLU Transformation
+        self.is_in_velocity_control = True
+        self.position.x = twist.linear.y
+        self.position.y = -twist.linear.x
+        self.position.z = self.takeoff_height - twist.linear.z
+        # A conversion for angular z is done in the attitude_callback function(it's the '-' in front of self.trueYaw)
+        self.heading = twist.angular.z
+        #self.send_velocity_setpoint(self.velocity, self.yaw)
+        self.send_position_setpoint(self.position, self.heading)
+        self.get_logger().info(f"Position={self.position.x, self.position.y}")
+
     def cb_twist_velocity(self, twist):
         #implements NED -> FLU Transformation
         self.is_in_velocity_control = True
         self.velocity.x = twist.linear.y
         self.velocity.y = -twist.linear.x
-        self.velocity.z = self.takeoff_height - twist.linear.z
+        self.velocity.z = -twist.linear.z
         # A conversion for angular z is done in the attitude_callback function(it's the '-' in front of self.trueYaw)
-        self.yaw = twist.angular.z
+        self.yaw_rad_s = twist.angular.z
         #self.send_velocity_setpoint(self.velocity, self.yaw)
-        self.send_position_setpoint(self.velocity, self.yaw)
+        self.send_velocity_setpoint(self.velocity, self.yaw_rad_s)
         self.get_logger().info(f"Velocity={self.velocity.x, self.velocity.y}")
 
     #receives current trajectory values from drone and grabs the yaw value of the orientation

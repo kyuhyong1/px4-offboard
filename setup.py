@@ -29,7 +29,8 @@ setup(
                 'offboard_control = px4_offboard.offboard_control:main',
                 'visualizer = px4_offboard.visualizer:main',
                 'offboard_commander = px4_offboard.offboard_commander:main',
-                'teleop_keyboard = px4_offboard.teleop_keyboard:main'
+                'teleop_keyboard = px4_offboard.teleop_keyboard:main',
+                'teleop_joy = px4_offboard.teleop_joy:main'
         ],
     },
 )
