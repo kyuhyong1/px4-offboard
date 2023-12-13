@@ -1,4 +1,4 @@
-# px4-offboard
+# UDS_MMU_TELEOP
 This `repository` contains a python examples for offboard control on ROS2 with [PX4](https://px4.io/)
 
 The `px4_offboard` package contains the following nodes

@@ -1,13 +1,16 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>px4_offboard</name>
+  <name>uds_mmu_teleop</name>
   <version>0.0.0</version>
-  <description>ROS2 python interface for px4</description>
-  <maintainer email="jalim@ethz.ch">jaeyoung</maintainer>
-  <license>BSD-3</license>
+  <description>Joystick node for UDS MMU</description>
+  <maintainer email="kyuhyong.you@nearthlab.com">Kyuhyong</maintainer>
+  <license>None</license>
   
-  <depend>px4_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>uds_mmu_msgs</depend>
+  <depend>uds_mmu_utils</depend>
+
   <exec_depend>ros2launch</exec_depend>
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

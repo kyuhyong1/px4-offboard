@@ -32,35 +32,45 @@
 #
 ############################################################################
 
-__author__ = "Jaeyoung Lim"
-__contact__ = "jalim@ethz.ch"
+__author__ = "Braden Wagstaff"
+__contact__ = "braden@arkelectron.com"
 
 from launch import LaunchDescription
+from launch.actions import ExecuteProcess
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
 
 
 def generate_launch_description():
-    package_dir = get_package_share_directory('px4_offboard')
+    package_dir = get_package_share_directory('uds_mmu_teleop')
+    # bash_script_path = os.path.join(package_dir, 'scripts', 'TerminatorScript.sh')
     return LaunchDescription([
+        # ExecuteProcess(cmd=['bash', bash_script_path], output='screen'),
+        #Node(
+        #    package='uds_mmu_teleop',
+        #    namespace='uds_mmu_teleop',
+        #    executable='visualizer',
+        #    name='visualizer'
+        #),
         Node(
-            package='px4_offboard',
-            namespace='px4_offboard',
-            executable='visualizer',
-            name='visualizer'
+            package='uds_mmu_teleop',
+            namespace='uds_mmu_teleop',
+            executable='teleop_keyboard',
+            name='teleop_keyboard',
+            prefix='gnome-terminal --',
         ),
         Node(
-            package='px4_offboard',
-            namespace='px4_offboard',
-            executable='offboard_control',
-            name='control'
+            package='uds_mmu_teleop',
+            namespace='uds_mmu_teleop',
+            executable='teleop_commander',
+            name='teleop_commander'
         ),
-        Node(
-            package='rviz2',
-            namespace='',
-            executable='rviz2',
-            name='rviz2',
-            arguments=['-d', [os.path.join(package_dir, 'visualize.rviz')]]
-        )
+        #Node(
+        #    package='rviz2',
+        #    namespace='',
+        #    executable='rviz2',
+        #    name='rviz2',
+        #    arguments=['-d', [os.path.join(package_dir, 'visualize.rviz')]]
+        #)
     ])

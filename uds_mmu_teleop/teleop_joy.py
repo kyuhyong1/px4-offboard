@@ -83,17 +83,20 @@ class JoyControl(Node):
             self.send_command_msg("SET_ARM")
             print("Set ARM")
         elif joymsg.buttons[1] == 1:            # B button pressed
-            self.send_command_msg("SET_LAND")
-            print("Set LAND")
-        elif joymsg.buttons[2] == 1:            # X button pressed
             self.send_command_msg("SET_TAKEOFF")
             print("Set TAKE OFF")
-        elif joymsg.buttons[3] == 1:            # Y button pressed
+        elif joymsg.buttons[2] == 1:            # X button pressed
+            self.send_command_msg("SET_LAND")
+            print("Set LAND")
+        elif joymsg.buttons[7] == 1:            # ]] button pressed
             self.send_command_msg("SET_DISARM")
             print("Set DISARM")
-        elif joymsg.buttons[7] == 1:            # 
-            self.send_command_msg("SET_OFFBOARD")
-            print("Set OFFBOARD")
+        elif joymsg.buttons[4] == 1:            # L button pressed
+            self.send_command_msg("SET_POSITION")
+            print("Set POSITION")
+        elif joymsg.buttons[5] == 1:            # R button pressed
+            self.send_command_msg("SET_ATTITUDE")
+            print("Set ATTITUDE")
 
     def __init__(self):
         super().__init__('minimal_publisher')
@@ -106,9 +109,9 @@ class JoyControl(Node):
         )
 
         #Create publishers
-        self.pub_twist = self.create_publisher(Twist, '/offboard_velocity_cmd', qos_profile)
+        self.pub_twist = self.create_publisher(Twist, '/twist_joy', qos_profile)
 
-        self.pub_command = self.create_publisher(StringMsg, '/command_message', qos_profile)
+        self.pub_command = self.create_publisher(StringMsg, '/teleop_command', qos_profile)
 
         #Create subscribers
         self.sub_joy = self.create_subscription(Joy, '/joy', self.cb_joy, 10)
